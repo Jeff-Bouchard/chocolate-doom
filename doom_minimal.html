@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Decentralized DOOM – Minimal Loader</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 1rem;
+            background: #111;
+            color: #eee;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        #game {
+            background: #000;
+            image-rendering: pixelated;
+            border: 2px solid #555;
+        }
+
+        #controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        #log {
+            width: 100%;
+            max-width: 900px;
+            height: 220px;
+            background: #050509;
+            border: 1px solid #333;
+            padding: 0.5rem;
+            font-family: "Courier New", monospace;
+            font-size: 11px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        button {
+            padding: 0.4rem 0.8rem;
+            background: #2d6cdf;
+            border: none;
+            border-radius: 3px;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <h1 id="game-title">Decentralized DOOM – Minimal Loader</h1>
+    <p id="game-desc" class="sr-only">
+        Main DOOM game viewport (graphics only). Use standard DOOM keyboard controls. This canvas does not expose interactive UI elements by itself.
+    </p>
+    <canvas id="game" width="320" height="200" aria-labelledby="game-title" aria-describedby="game-desc" role="img"></canvas>
+    <div id="controls">
+        <button id="start">🚀 Load DOOM</button>
+        <label style="font-size: 0.9rem; color:#ccc;">
+            <input type="checkbox" id="dm-toggle" /> Deathmatch (-deathmatch -nomonsters)
+        </label>
+    </div>
+    <pre id="log"></pre>
+
+    <script>
+        const logEl = document.getElementById('log');
+
+        function log(msg, isError = false) {
+            const ts = new Date().toLocaleTimeString();
+            const line = `[${ts}] ${msg}`;
+            if (logEl) {
+                logEl.textContent += (logEl.textContent ? "\n" : "") + line;
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+            (isError ? console.error : console.log)(line);
+        }
+
+        // Real CIDs and hashes from your production loader
+        const WAD_CID = 'bafybeicbfqkr75i45wdwgikwh2dez6stqdl4y3er7amrwei3lfv2pyzzty';
+        const JS_CID = 'bafkreibnbtubgbk6pyjiz6wdplrtd544eoj2npcxrxmwxqwgxq7ko5zrpm';
+        const WASM_CID = 'bafybeih7g7ljdgqtsxt4qom6kef3miwg4hrgwdxif3dtz76oecqhqxd7ve';
+
+        const EXPECTED_WAD_SHA256 = '1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771';
+        const EXPECTED_JS_SHA256 = '2d0ce813055e7e128cfac37ae331f79c2393a6bc578dd96bc2c6bc3ea777317b';
+        const EXPECTED_WASM_SHA256 = 'de358cfaafc8067a0a00d64e8c983fe15a99f689fb7bd8c394c22e3c81a99521';
+
+        async function computeSHA256(data) {
+            const buf = data instanceof ArrayBuffer ? data : data.buffer;
+            const hashBuffer = await crypto.subtle.digest('SHA-256', buf);
+            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function verifyIntegrity(data, expectedHash, label) {
+            const actual = await computeSHA256(data);
+            if (actual !== expectedHash) {
+                throw new Error(`${label} integrity mismatch: expected ${expectedHash}, got ${actual}`);
+            }
+            log(`✅ ${label} integrity verified`);
+        }
+
+        async function fetchFromIPFS(cid, isText = false) {
+            const base = `https://ipfs.ness.cx/ipfs/${cid}`;
+            const url = `https://corsproxy.io/?${encodeURIComponent(base)}`;
+            log(`📦 Downloading ${cid} via ipfs.ness.cx (proxied)`);
+            const controller = new AbortController();
+            const to = setTimeout(() => controller.abort(), 30000);
+            try {
+                const res = await fetch(url, {
+                    signal: controller.signal
+                });
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+                }
+                const data = isText ? await res.text() : await res.arrayBuffer();
+                const n = isText ? data.length : data.byteLength;
+                if (!n) throw new Error('empty data');
+                log(`✅ Downloaded ${cid}: ${n} bytes`);
+                return data;
+            } finally {
+                clearTimeout(to);
+            }
+        }
+
+        // Harden createImageData as discussed, so bad sizes cannot throw
+        (function patchCreateImageData() {
+            try {
+                const proto = CanvasRenderingContext2D && CanvasRenderingContext2D.prototype;
+                if (!proto || proto.__doomPatchedCreateImageData) return;
+                const orig = proto.createImageData;
+                proto.createImageData = function(a, b) {
+                    try {
+                        if (a && typeof a === 'object' && 'width' in a && 'height' in a && b === undefined) {
+                            const w = Number(a.width);
+                            const h = Number(a.height);
+                            const bad = !Number.isFinite(w) || w <= 320 || !Number.isFinite(h) || h <= 200;
+                            if (bad) {
+                                const fallbackW = 320,
+                                    fallbackH = 200;
+                                log(`⚠ createImageData(ImageData) invalid ${String(w)}x${String(h)}, forcing ${fallbackW}x${fallbackH}`);
+                                const off = document.createElement('canvas');
+                                off.width = fallbackW;
+                                off.height = fallbackH;
+                                const offCtx = off.getContext('2d');
+                                if (offCtx && offCtx.createImageData) return offCtx.createImageData(fallbackW, fallbackH);
+                                return orig.call(this, fallbackW, fallbackH);
+                            }
+                            return orig.call(this, a);
+                        }
+
+                        let width = Number(a);
+                        let height = Number(b);
+                        const invalidW = !Number.isFinite(width) || width <= 0;
+                        const invalidH = !Number.isFinite(height) || height <= 0;
+                        if (invalidW || invalidH) {
+                            const fallbackW = 320,
+                                fallbackH = 200;
+                            log(`⚠ createImageData(${String(a)}, ${String(b)}) invalid, forcing ${fallbackW}x${fallbackH}`);
+                            const off = document.createElement('canvas');
+                            off.width = fallbackW;
+                            off.height = fallbackH;
+                            const offCtx = off.getContext('2d');
+                            if (offCtx && offCtx.createImageData) return offCtx.createImageData(fallbackW, fallbackH);
+                            return orig.call(this, fallbackW, fallbackH);
+                        }
+                        return orig.call(this, width, height);
+                    } catch (e) {
+                        log(`⚠ Patched createImageData failed: ${e.message}`);
+                        return orig.apply(this, arguments);
+                    }
+                };
+                proto.__doomPatchedCreateImageData = true;
+                log('🛡 Patched CanvasRenderingContext2D.createImageData (minimal page).');
+            } catch (e) {
+                log(`⚠ Failed to patch createImageData: ${e.message}`);
+            }
+        })();
+
+        async function startDoom() {
+            const btn = document.getElementById('start');
+            btn.disabled = true;
+            btn.textContent = '⏳ Loading...';
+            try {
+                const canvas = document.getElementById('game');
+                if (!canvas) throw new Error('Canvas #game not found');
+                canvas.width = 320;
+                canvas.height = 200;
+                canvas.style.width = '640px';
+                canvas.style.height = '400px';
+
+                log('🎮 Fetching DOOM assets from ipfs.ness.cx...');
+                const [wadBuf, jsText] = await Promise.all([
+                    fetchFromIPFS(WAD_CID, false),
+                    fetchFromIPFS(JS_CID, true)
+                ]);
+
+                await verifyIntegrity(wadBuf, EXPECTED_WAD_SHA256, 'WAD');
+                await verifyIntegrity(new TextEncoder().encode(jsText), EXPECTED_JS_SHA256, 'JS');
+
+                const wadBytes = new Uint8Array(wadBuf);
+                log(`📦 WAD ready: ${wadBytes.length} bytes`);
+
+                const dmToggle = document.getElementById('dm-toggle');
+                const dmEnabled = dmToggle ? dmToggle.checked : false;
+                const doomArgs = ['-iwad', '/doom1.wad'];
+                if (dmEnabled) doomArgs.push('-deathmatch', '-nomonsters');
+
+                log('⚙️ Setting up Module and WASM loader...');
+
+                window.Module = {
+                    canvas,
+                    arguments: doomArgs,
+                    preRun() {
+                        Module.FS.createDataFile('/', 'doom1.wad', wadBytes, true, true, true);
+                        log(`WAD mounted in virtual FS (${wadBytes.length} bytes)`);
+                    },
+                    locateFile(path) {
+                        return path; // all paths handled by our custom instantiateWasm
+                    },
+                    instantiateWasm(imports, successCallback) {
+                        (async () => {
+                            try {
+                                log('🔩 Fetching WASM from ipfs.ness.cx (proxied)...');
+                                const wasmBuf = await fetchFromIPFS(WASM_CID, false);
+                                await verifyIntegrity(wasmBuf, EXPECTED_WASM_SHA256, 'WASM');
+                                const u8 = new Uint8Array(wasmBuf);
+                                if (!u8 || u8.byteLength < 8) throw new Error(`WASM too small: ${u8 ? u8.byteLength : 0} bytes`);
+                                const magicOk = u8[0] === 0x00 && u8[1] === 0x61 && u8[2] === 0x73 && u8[3] === 0x6d;
+                                if (!magicOk) throw new Error('WASM magic mismatch (proxy returned HTML?)');
+                                const results = await WebAssembly.instantiate(wasmBuf, imports);
+                                log('✅ WASM instantiated');
+                                successCallback(results.instance);
+                            } catch (e) {
+                                log(`❌ WASM load/instantiate failed: ${e.message}`, true);
+                                throw e;
+                            }
+                        })();
+                        return {};
+                    },
+                    print(text) {
+                        if (text && text.trim()) log(`DOOM: ${text}`);
+                    },
+                    printErr(text) {
+                        if (text && text.trim()) log(`DOOM ERR: ${text}`, true);
+                    },
+                    onRuntimeInitialized() {
+                        log('🎉 DOOM runtime initialized (minimal loader)');
+                        canvas.focus();
+                    }
+                };
+
+                log('🚀 Executing engine JS');
+                const script = document.createElement('script');
+                script.textContent = jsText;
+                document.head.appendChild(script);
+                log('✅ Engine JS injected – DOOM should start shortly');
+
+            } catch (err) {
+                log(`❌ Minimal loader failed: ${err.message}`, true);
+                const btn2 = document.getElementById('start');
+                if (btn2) {
+                    btn2.disabled = false;
+                    btn2.textContent = '🚀 Load DOOM';
+                }
+            }
+        }
+
+        document.getElementById('start').addEventListener('click', () => {
+            startDoom();
+        });
+    </script>
+</body>
+
+</html>

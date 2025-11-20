@@ -141,9 +141,15 @@ int integer_scaling = false;
 int vga_porch_flash = false;
 
 // Force software rendering, for systems which lack effective hardware
-// acceleration
+// acceleration. On EMSCRIPTEN we default this to on so that the SDL2
+// backend uses the software/canvas path instead of relying on GPU/WebGL
+// drivers that may be blocked or unreliable in hardened browsers.
 
+#ifdef EMSCRIPTEN
+int force_software_renderer = 1;
+#else
 int force_software_renderer = false;
+#endif
 
 // Time to wait for the screen to settle on startup before starting the
 // game (ms)

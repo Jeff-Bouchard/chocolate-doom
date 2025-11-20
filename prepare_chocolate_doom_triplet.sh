@@ -33,6 +33,23 @@ add_ipfs() {
   ipfs add --cid-version=1 -Q "$1"
 }
 
+TRACKERS=(
+  "udp://tracker.opentrackr.org:1337/announce"
+  "udp://tracker.torrent.eu.org:451/announce"
+  "udp://open.stealth.si:80/announce"
+  "udp://tracker.qu.ax:6969/announce"
+)
+
+build_magnet() {
+  local cid="$1"
+  local dn="$2"
+  local magnet="magnet:?xt=urn:ipfs:${cid}&dn=${dn}&ws=https://ipfs.ness.cx/ipfs/${cid}"
+  for tr in "${TRACKERS[@]}"; do
+    magnet+="&tr=${tr}"
+  done
+  printf '%s\n' "$magnet"
+}
+
 echo ">> Computing SHA-256 digests..."
 WAD_SHA256="$(hash_file "$WAD_PATH")"
 JS_SHA256="$(hash_file "$JS_PATH")"
@@ -69,13 +86,13 @@ echo
 
 echo "================ Magnet URIs (3-way backup) ======================"
 echo "WAD  magnet:"
-echo "  magnet:?xt=urn:ipfs:${WAD_CID}&dn=doom-wad&ws=https://ipfs.ness.cx/ipfs/${WAD_CID}"
+echo "  $(build_magnet "$WAD_CID" "doom-wad")"
 echo
 echo "JS   magnet:"
-echo "  magnet:?xt=urn:ipfs:${JS_CID}&dn=doom-js&ws=https://ipfs.ness.cx/ipfs/${JS_CID}"
+echo "  $(build_magnet "$JS_CID" "doom-js")"
 echo
 echo "WASM magnet:"
-echo "  magnet:?xt=urn:ipfs:${WASM_CID}&dn=doom-wasm&ws=https://ipfs.ness.cx/ipfs/${WASM_CID}"
+echo "  $(build_magnet "$WASM_CID" "doom-wasm")"
 echo
 
 echo "================ JS constants for production_doom.html =========="
@@ -89,6 +106,23 @@ const EXPECTED_WASM_SHA256 = "$WASM_SHA256";
 const WAD_DOMAIN_NAME  = "doomwad.private.ness";
 const JS_DOMAIN_NAME   = "doomjs.private.ness";
 const WASM_DOMAIN_NAME = "doomwasm.private.ness";
+TRACKERS=(
+  "udp://tracker.opentrackr.org:1337/announce"
+  "udp://tracker.torrent.eu.org:451/announce"
+  "udp://open.stealth.si:80/announce"
+  "udp://tracker.qu.ax:6969/announce"
+)
+
+build_magnet() {
+  local cid="$1"
+  local dn="$2"
+  local magnet="magnet:?xt=urn:ipfs:${cid}&dn=${dn}&ws=https://ipfs.ness.cx/ipfs/${cid}"
+  for tr in "${TRACKERS[@]}"; do
+    magnet+="&tr=${tr}"
+  done
+  printf '%s\n' "$magnet"
+}
+
 EOF
 echo
 echo "Done. Use the above constants and mappings in production_doom.html."

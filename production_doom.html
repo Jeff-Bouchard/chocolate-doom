@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Production Decentralized DOOM</title>
-    <meta id="__MAX_POISE_DATA" data-cfg="{&quot;mode&quot;:&quot;strict&quot;,&quot;modules&quot;:{&quot;canvasNoise&quot;:true,&quot;audioNoise&quot;:true,&quot;webglNoise&quot;:true,&quot;perfQuantize&quot;:true,&quot;navigatorClamp&quot;:true,&quot;storageHygiene&quot;:true,&quot;blockBeacons&quot;:true,&quot;stripHeadersLimited&quot;:true}}" data-key="43acd5b45188aa6a21ce88ae60f7b7e28668fe3e467fdd60e8cc4dcfc3c9ec57">
+    <meta id="__MAX_POISE_DATA" data-cfg="{&quot;mode&quot;:&quot;strict&quot;,&quot;modules&quot;:{&quot;canvasNoise&quot;:false,&quot;audioNoise&quot;:true,&quot;webglNoise&quot;:false,&quot;perfQuantize&quot;:true,&quot;navigatorClamp&quot;:true,&quot;storageHygiene&quot;:true,&quot;blockBeacons&quot;:true,&quot;stripHeadersLimited&quot;:true}}" data-key="43acd5b45188aa6a21ce88ae60f7b7e28668fe3e467fdd60e8cc4dcfc3c9ec57">
     <!-- Lightweight QR code generator and compression lib for compact invites -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
@@ -275,6 +275,7 @@
             .page-grid {
                 grid-template-columns: 1fr;
             }
+
             .left-column {
                 position: static;
                 height: auto;
@@ -339,19 +340,19 @@
 
                 <div style="margin-top:10px">
                     <label>WAD Magnet:</label>
-                    <input type="text" id="wad-magnet" readonly class="flex1"/>
+                    <input type="text" id="wad-magnet" readonly class="flex1" />
                 </div>
                 <div>
                     <label>JS Magnet:</label>
-                    <input type="text" id="js-magnet" readonly class="flex1"/>
+                    <input type="text" id="js-magnet" readonly class="flex1" />
                 </div>
                 <div>
                     <label>WASM Magnet:</label>
-                    <input type="text" id="wasm-magnet" readonly class="flex1"/>
+                    <input type="text" id="wasm-magnet" readonly class="flex1" />
                 </div>
                 <div>
                     <label>Bundle Magnet:</label>
-                    <input type="text" id="bundle-magnet" readonly class="flex1"/>
+                    <input type="text" id="bundle-magnet" readonly class="flex1" />
                 </div>
 
                 <button id="verify-domains" type="button">🔍 Verify EmerDNS Domains</button>
@@ -506,11 +507,16 @@
                 }
                 if ((type === 'webgl' || type === 'webgl2') && !ctx.__instrumentedgl) {
                     ctx.__instrumentedgl = true;
-                    const bump = () => { window.__doomFramesGL = (window.__doomFramesGL || 0) + 1; };
+                    const bump = () => {
+                        window.__doomFramesGL = (window.__doomFramesGL || 0) + 1;
+                    };
                     const wrap = (obj, fn) => {
                         if (!obj || typeof obj[fn] !== 'function') return;
                         const orig = obj[fn];
-                        obj[fn] = function() { bump(); return orig.apply(this, arguments); };
+                        obj[fn] = function() {
+                            bump();
+                            return orig.apply(this, arguments);
+                        };
                     };
                     wrap(ctx, 'drawArrays');
                     wrap(ctx, 'drawElements');
@@ -526,6 +532,10 @@
         let dataChannel = null;
         let isHost = false;
         let walletBytes = null;
+
+        const EXPECTED_WAD_SHA256 = "1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771";
+        const EXPECTED_JS_SHA256 = "2d0ce813055e7e128cfac37ae331f79c2393a6bc578dd96bc2c6bc3ea777317b";
+        const EXPECTED_WASM_SHA256 = "de358cfaafc8067a0a00d64e8c983fe15a99f689fb7bd8c394c22e3c81a99521";
 
         // DNS resolver configuration - using ONLY ns74.com (no central authorities)
         const NS74_SERVER = 'ns74.com';
@@ -570,11 +580,11 @@
         async function resolveEmerDNS(domain) {
             log(`🔍 Resolving ${domain} to IPFS CID`);
 
-            // Use the verified CIDs from our IPFS upload
+            // Use the verified CIDs from our latest IPFS upload
             const domainToCID = {
-                'doomwad.private.ness': 'QmduVy8z8Nuh7jtn2RbHY9BcjxuFSWruWBjK4ioyamD6Gm',
-                'doomjs.private.ness': 'QmSXbtwcqSs871UdHwDT6Vq3ki52EnxiU4SnHSL6n7B2sX',
-                'doomwasm.private.ness': 'QmbFUG3ibWuWMiUYdCuQ17jSEMn9rLgnmSjZR4cZ2KHRXd'
+                'doomwad.private.ness': 'bafybeicbfqkr75i45wdwgikwh2dez6stqdl4y3er7amrwei3lfv2pyzzty',
+                'doomjs.private.ness': 'bafkreibnbtubgbk6pyjiz6wdplrtd544eoj2npcxrxmwxqwgxq7ko5zrpm',
+                'doomwasm.private.ness': 'bafybeih7g7ljdgqtsxt4qom6kef3miwg4hrgwdxif3dtz76oecqhqxd7ve'
             };
 
             const cid = domainToCID[domain];
@@ -872,6 +882,65 @@
             loadBtn.textContent = '🚀 Loading...';
 
             try {
+                // Harden canvas API for environments where width/height may be clamped or zeroed
+                try {
+                    const proto = CanvasRenderingContext2D && CanvasRenderingContext2D.prototype;
+                    if (proto && !proto.__doomPatchedCreateImageData) {
+                        const origCreateImageData = proto.createImageData;
+                        proto.createImageData = function(a, b) {
+                            try {
+                                // Signature 1: createImageData(ImageData)
+                                if (a && typeof a === 'object' && 'width' in a && 'height' in a && b === undefined) {
+                                    const w = Number(a.width);
+                                    const h = Number(a.height);
+                                    const bad = !Number.isFinite(w) || w <= 0 || !Number.isFinite(h) || h <= 0;
+                                    if (bad) {
+                                        const fallbackW = 320;
+                                        const fallbackH = 200;
+                                        log(`⚠ createImageData(ImageData) invalid size ${String(w)}x${String(h)}, forcing ${fallbackW}x${fallbackH}`);
+                                        const offCanvas = document.createElement('canvas');
+                                        offCanvas.width = fallbackW;
+                                        offCanvas.height = fallbackH;
+                                        const offCtx = offCanvas.getContext('2d');
+                                        if (offCtx && offCtx.createImageData) {
+                                            return offCtx.createImageData(fallbackW, fallbackH);
+                                        }
+                                        return origCreateImageData.call(this, fallbackW, fallbackH);
+                                    }
+                                    return origCreateImageData.call(this, a);
+                                }
+
+                                // Signature 2: createImageData(sw, sh)
+                                let width = Number(a);
+                                let height = Number(b);
+                                const invalidW = !Number.isFinite(width) || width <= 0;
+                                const invalidH = !Number.isFinite(height) || height <= 0;
+                                if (invalidW || invalidH) {
+                                    const fallbackW = 320;
+                                    const fallbackH = 200;
+                                    log(`⚠ createImageData(${String(a)}, ${String(b)}) invalid, forcing ${fallbackW}x${fallbackH}`);
+                                    const offCanvas = document.createElement('canvas');
+                                    offCanvas.width = fallbackW;
+                                    offCanvas.height = fallbackH;
+                                    const offCtx = offCanvas.getContext('2d');
+                                    if (offCtx && offCtx.createImageData) {
+                                        return offCtx.createImageData(fallbackW, fallbackH);
+                                    }
+                                    return origCreateImageData.call(this, fallbackW, fallbackH);
+                                }
+                                return origCreateImageData.call(this, width, height);
+                            } catch (err) {
+                                log(`⚠ Patched createImageData failed: ${err.message}`);
+                                return origCreateImageData.apply(this, arguments);
+                            }
+                        };
+                        proto.__doomPatchedCreateImageData = true;
+                        log('🛡 Patched CanvasRenderingContext2D.createImageData for hardened environment.');
+                    }
+                } catch (e) {
+                    log(`⚠ Failed to patch createImageData: ${e.message}`);
+                }
+
                 log('🎮 Starting decentralized DOOM load sequence...');
 
                 // Setup canvas with proper DOOM dimensions - CRITICAL for rendering
@@ -914,7 +983,7 @@
                 const bundleCid = bundleCidEl ? (bundleCidEl.value || '').trim() : '';
 
                 let wadHash, jsHash, wasmHash; // May be per-asset CIDs or bundle/path
-                let wadData, jsCode;           // Loaded bytes/text for WAD and JS
+                let wadData, jsCode; // Loaded bytes/text for WAD and JS
 
                 if (bundleCid) {
                     log(`📦 Bundle CID detected: ${bundleCid} — prioritizing directory-based load`);
@@ -930,7 +999,11 @@
                             const path = `${cid}/${name}`;
                             try {
                                 const data = await fetchFromIPFS(path, isText);
-                                return { path, data, name };
+                                return {
+                                    path,
+                                    data,
+                                    name
+                                };
                             } catch (e) {
                                 errors.push(`${name}: ${e.message}`);
                             }
@@ -975,6 +1048,8 @@
                         fetchFromIPFS(wadHash, false),
                         fetchFromIPFS(jsHash, true)
                     ]);
+                    await verifyIntegrity(wadData, EXPECTED_WAD_SHA256, 'WAD');
+                    await verifyIntegrity(new TextEncoder().encode(jsCode), EXPECTED_JS_SHA256, 'JS');
                     log(`✓ Assets ready: WAD=${wadData.byteLength} bytes, JS=${jsCode.length} chars`);
                 }
 
@@ -1006,9 +1081,34 @@
                 console.log('Initializing Module with canvas:', gameCanvas);
                 // Use IPFS as the EXECUTION LAYER for WASM as well (proxied like WAD/JS)
 
+                // SHA-256 hash function using Web Crypto API
+                async function computeSHA256(data) {
+                    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+                }
+
+                // Verify asset integrity
+                async function verifyIntegrity(data, expectedHash, assetName) {
+                    const actualHash = await computeSHA256(data);
+                    if (actualHash !== expectedHash) {
+                        throw new Error(`Integrity check failed for ${assetName}: expected ${expectedHash}, got ${actualHash}`);
+                    }
+                    log(`✅ ${assetName} integrity verified`);
+                }
+
+                // Check WebGL availability for diagnostics
+                const tempCanvas = document.createElement('canvas');
+                const webGLAvailable = !!(tempCanvas.getContext('webgl') || tempCanvas.getContext('experimental-webgl'));
+                log(`WebGL available: ${webGLAvailable}`);
+
                 const dmToggle = document.getElementById('dm-toggle');
                 const dmEnabled = dmToggle ? dmToggle.checked : false;
-                const doomArgs = dmEnabled ? ['-iwad', '/doom1.wad', '-deathmatch', '-nomonsters'] : ['-iwad', '/doom1.wad'];
+                window.dmEnabled = dmEnabled;
+
+                const doomArgs = ['-iwad', '/doom1.wad'];
+                if (dmEnabled) {
+                    doomArgs.push('-deathmatch', '-nomonsters');
+                }
 
                 window.Module = {
                     canvas: gameCanvas,
@@ -1027,6 +1127,7 @@
                             try {
                                 log(`🔩 Fetching WASM via IPFS execution layer (proxied)`);
                                 const wasmBuf = await fetchFromIPFS(wasmHash, false);
+                                await verifyIntegrity(wasmBuf, EXPECTED_WASM_SHA256, 'WASM');
                                 if (!(wasmBuf instanceof ArrayBuffer)) {
                                     throw new Error('WASM fetch did not return ArrayBuffer');
                                 }
@@ -1061,6 +1162,7 @@
                     onRuntimeInitialized: function() {
                         log('🎉 DOOM runtime initialized successfully!');
                         gameLoaded = true;
+                        console.log('Canvas style:', gameCanvas.style);
                         // Ensure the canvas has valid backing dimensions to avoid createImageData errors
                         try {
                             const c = gameCanvas || (Module && Module.canvas);
@@ -1113,15 +1215,16 @@
                                                 for (let y = 0; y < c.height; y += 20) {
                                                     ctx.fillRect(0, y, c.width, 2);
                                                 }
-                                                log('🧪 Drew diagnostic pattern (no DOOM frames yet). If visible, engine is not rendering.');
                                             } else {
                                                 log('⚠ 2D context unavailable for diagnostics');
                                             }
+                                            log(`- Rendering mode attempted: ${webGLAvailable ? 'WebGL' : 'WebGL (may fail)'}.`, true);
+                                            log('🧪 Drew diagnostic pattern (no DOOM frames yet). If visible, engine is not rendering.');
                                         } catch (e2) {
                                             log(`⚠ Diagnostic draw failed: ${e2.message}`);
                                         }
                                         log('❗ No frames from 2D or WebGL. Potential causes:');
-                                        log('- Canvas/WebGL privacy hardening interfering (see meta __MAX_POISE_DATA). Try disabling webglNoise/canvasNoise or allowlisting.', true);
+                                        log('- Canvas/WebGL privacy hardening interfering (see meta __MAX_POISE_DATA). Try disabling webglNoise/canvasNoise or allowlisting.', false);
                                         log('- Engine JS not executing or failing before main loop. Check earlier errors.', true);
                                         log('- WASM mismatch or corrupt. Confirm sizes and hashes.', true);
                                     } catch (e) {
@@ -1748,7 +1851,10 @@
                 const url = 'https://enumer.org/public-stun.txt';
                 const urlWithTs = url + (url.includes('?') ? '&' : '?') + 'ts=' + Date.now();
                 log(`🌐 Fetching public STUN list from ${url}`);
-                const res = await fetch(urlWithTs, { method: 'GET', cache: 'no-store' });
+                const res = await fetch(urlWithTs, {
+                    method: 'GET',
+                    cache: 'no-store'
+                });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const text = await res.text();
                 // Parse lines like: stun:host:port or stun:host
@@ -1763,7 +1869,9 @@
                 }
                 const pick = lines.slice(0, Math.max(1, Math.min(maxCount, lines.length)));
                 log(`🔧 Using ${pick.length} STUN server(s)`);
-                return [{ urls: pick }];
+                return [{
+                    urls: pick
+                }];
             } catch (e) {
                 log(`⚠️ STUN list fetch failed: ${e.message}. Falling back to host-only ICE.`, true);
                 return [];
@@ -1775,7 +1883,9 @@
 
             // Use dynamic STUN list from enumer.org; fallback to host-only
             const iceServers = await getRandomStunServers(1);
-            const cfg = { iceServers };
+            const cfg = {
+                iceServers
+            };
             peerConnection = new RTCPeerConnection(cfg);
             if (!cfg.iceServers || cfg.iceServers.length === 0) {
                 log('🛡️ Using host-only ICE (no STUN/TURN). Connectivity may be limited behind NAT.');

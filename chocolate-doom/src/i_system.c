@@ -49,6 +49,33 @@
 #include "w_wad.h"
 #include "z_zone.h"
 
+#ifdef EMSCRIPTEN
+void *_emscripten_memcpy_bulkmem(void *dest, const void *src, size_t n)
+{
+    unsigned char *d = (unsigned char *) dest;
+    const unsigned char *s = (const unsigned char *) src;
+
+    while (n--)
+    {
+        *d++ = *s++;
+    }
+
+    return dest;
+}
+
+void *_emscripten_memset_bulkmem(void *dest, int c, size_t n)
+{
+    unsigned char *d = (unsigned char *) dest;
+
+    while (n--)
+    {
+        *d++ = (unsigned char) c;
+    }
+
+    return dest;
+}
+#endif
+
 #define DEFAULT_RAM 16 /* MiB */
 #define MIN_RAM     4  /* MiB */
 
