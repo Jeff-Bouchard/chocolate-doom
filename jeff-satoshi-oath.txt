@@ -1,0 +1,43 @@
+
+Satoshi Oath
+Satoshi - name meaning clear thinking, quick witted, wise
+
+When you are developing your own blockchain based application you are not just making another app or involved in another start-up, you are taking part in creating a new form of society. This oath is designed as a practical guide and a symbolic initiation into a community of developers with an expanded view of blockchain development.
+
+By taking this oath, you pledge to consider the full extent and range of the people and environments your work might affect, with special attention to the most marginalised and those not represented, and to consider each point below in the design and development of new applications.
+
+The blockchain has its roots in Bitcoin, which was a response to corrupt centralized and opaque power structures that became explicit in the financial crisis of 2008. The core values that inspired its design are therefore decentralisation, openness and neutrality, but these values cannot be fully guaranteed by the technical architecture alone and must be considered for each project that is undertaken. A decentralized computer network does not guarantee decentralized power; code and cryptography does not guarantee neutrality; openness does not guarantee legibility.
+
+IMMUTABILITY
+
+is essential for decentralised trust, but change is inevitable and necessary: not every contingency can be anticipated, data might be incorrect or hurt someone, contexts change and protocols need to adapt over time.
+
+CHANGE - I pledge to consider who or what has the power to determine change (in the protocol or data), and how to make this power visible and accountable.
+
+POWER - I pledge to think of the full range of people and environments that might be affected by changes, and to consider how their voices might be represented.
+
+NEUTRALITY
+
+is an ideal that should be strived for but is never fully realized because all systems operate on a set of assumptions about how the world works, what people want and how they behave. When these assumptions are encoded into a system they become automatically reinforced, invisible and harder to change.
+
+DELEGATION - I pledge to consider the assumptions and biases of the app/platform I am developing and how these are delegated to and enforced by the code.
+
+DISCLOSURE - I pledge to make these assumptions and biases visible in all the languages (code and human) necessary to make these understandable to all those who might be affected.
+
+DECENTRALISATION
+
+is the most central attribute of the blockchain, but in practice, one version of decentralisation might clash with another. If it becomes compulsory to take part in a decentralized system, the system itself becomes an oppressive authority in its own right.
+
+DISSENSUS - I pledge to consider the possibility of and consequences for disagreeing with decisions and developments of the system for all types of people.
+
+EXODUS - I pledge to consider the possibility and consequences for all types of people of leaving the system/platform/app.
+
+And beyond - I pledge to consider my limitations and seek advice from colleagues in other fields relevant to my work when needed.
+
+
+J'affirme que c'est la vérité.
+J-F Bouchard @JeffBouchard
+jeff@privateness.network
+16/8/2021
+
+

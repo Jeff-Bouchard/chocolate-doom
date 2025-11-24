@@ -124,9 +124,8 @@
         }
 
         async function fetchFromIPFS(cid, isText = false) {
-            const base = `https://ipfs.ness.cx/ipfs/${cid}`;
-            const url = `https://corsproxy.io/?${encodeURIComponent(base)}`;
-            log(`📦 Downloading ${cid} via ipfs.ness.cx (proxied)`);
+            const url = `https://ipfs.ness.cx/ipfs/${cid}`;
+            log(`📦 Downloading ${cid} via ipfs.ness.cx`);
             const controller = new AbortController();
             const to = setTimeout(() => controller.abort(), 30000);
             try {
@@ -244,7 +243,7 @@
                     instantiateWasm(imports, successCallback) {
                         (async () => {
                             try {
-                                log('🔩 Fetching WASM from ipfs.ness.cx (proxied)...');
+                                log('🔩 Fetching WASM from ipfs.ness.cx...');
                                 const wasmBuf = await fetchFromIPFS(WASM_CID, false);
                                 await verifyIntegrity(wasmBuf, EXPECTED_WASM_SHA256, 'WASM');
                                 const u8 = new Uint8Array(wasmBuf);

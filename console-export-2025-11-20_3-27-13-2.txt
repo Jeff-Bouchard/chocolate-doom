@@ -1,0 +1,36 @@
+[3:24:41 AM] 🛡 Patched CanvasRenderingContext2D.createImageData (minimal page). doom_minimal.html:100:52
+[3:24:49 AM] 🎮 Fetching DOOM assets from ipfs.ness.cx... doom_minimal.html:100:52
+[3:24:49 AM] 📦 Downloading bafybeicbfqkr75i45wdwgikwh2dez6stqdl4y3er7amrwei3lfv2pyzzty via ipfs.ness.cx (proxied) doom_minimal.html:100:52
+[3:24:49 AM] 📦 Downloading bafkreibnbtubgbk6pyjiz6wdplrtd544eoj2npcxrxmwxqwgxq7ko5zrpm via ipfs.ness.cx (proxied) doom_minimal.html:100:52
+XHRGET
+https://corsproxy.io/?https://ipfs.ness.cx/ipfs/bafybeicbfqkr75i45wdwgikwh2dez6stqdl4y3er7amrwei3lfv2pyzzty
+[HTTP/2 502  514ms]
+
+XHRGET
+https://corsproxy.io/?https://ipfs.ness.cx/ipfs/bafkreibnbtubgbk6pyjiz6wdplrtd544eoj2npcxrxmwxqwgxq7ko5zrpm
+[HTTP/2 502  517ms]
+
+[3:24:50 AM] ❌ Minimal loader failed: HTTP 502 doom_minimal.html:100:52
+[3:24:55 AM] 🎮 Fetching DOOM assets from ipfs.ness.cx... doom_minimal.html:100:52
+[3:24:55 AM] 📦 Downloading bafybeicbfqkr75i45wdwgikwh2dez6stqdl4y3er7amrwei3lfv2pyzzty via ipfs.ness.cx (proxied) doom_minimal.html:100:52
+[3:24:55 AM] 📦 Downloading bafkreibnbtubgbk6pyjiz6wdplrtd544eoj2npcxrxmwxqwgxq7ko5zrpm via ipfs.ness.cx (proxied) doom_minimal.html:100:52
+XHRGET
+https://corsproxy.io/?https://ipfs.ness.cx/ipfs/bafybeicbfqkr75i45wdwgikwh2dez6stqdl4y3er7amrwei3lfv2pyzzty
+[HTTP/2 502  73ms]
+
+XHRGET
+https://corsproxy.io/?https://ipfs.ness.cx/ipfs/bafkreibnbtubgbk6pyjiz6wdplrtd544eoj2npcxrxmwxqwgxq7ko5zrpm
+[HTTP/2 502  65ms]
+
+[3:24:55 AM] ❌ Minimal loader failed: HTTP 502 doom_minimal.html:100:52
+document.getElementById('game')
+<canvas id="game" width="320" height="200" aria-labelledby="game-title" aria-describedby="game-desc" role="img" style="width: 640px; height: 400px;">
+
+document.getElementById('game')
+const c = document.getElementById('game');
+console.log(c.width, c.height);
+const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+console.log('gl?', !!gl);
+320 200 debugger eval code:3:9
+gl? true debugger eval code:5:9
+undefined

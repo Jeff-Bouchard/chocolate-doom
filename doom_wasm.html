@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DOOM – doom-wasm Engine</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            background: #111;
+            color: #eee;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            height: 100%;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #container {
+            text-align: center;
+        }
+
+        #game {
+            background: #000;
+            image-rendering: pixelated;
+            border: 2px solid #555;
+            width: 800px;
+            height: 600px;
+            max-width: 100vw;
+            max-height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <canvas id="game" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    </div>
+    <script>
+        const doomArgs = [
+            "-iwad", "doom1.wad",
+            "-window",
+            "-nogui",
+            "-nomusic",
+            "-config", "default.cfg",
+            "-servername", "doom-wasm-local"
+        ];
+
+        var Module = {
+            onRuntimeInitialized: function() {
+                if (typeof callMain === "function") {
+                    callMain(doomArgs);
+                }
+            },
+            noInitialRun: true,
+            preRun: function() {
+                try {
+                    Module.FS.createPreloadedFile("", "doom1.wad", "doom-wasm/src/doom1.wad", true, true);
+                    Module.FS.createPreloadedFile("", "default.cfg", "doom-wasm/src/default.cfg", true, true);
+                } catch (e) {
+                    console.error("Failed to preload DOOM assets:", e);
+                }
+            },
+            print: function(text) {
+                if (text) console.log(text);
+            },
+            printErr: function(text) {
+                if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(" ");
+                console.error(text);
+            },
+            canvas: (function() {
+                var canvas = document.getElementById("game");
+                canvas.addEventListener("webglcontextlost", function(e) {
+                    alert("WebGL context lost. Reload the page.");
+                    e.preventDefault();
+                }, false);
+                return canvas;
+            })(),
+            setStatus: function(text) {
+                if (text) console.log(text);
+            },
+            totalDependencies: 0,
+            monitorRunDependencies: function(left) {
+                this.totalDependencies = Math.max(this.totalDependencies, left);
+                Module.setStatus(left ? "Preparing... (" + (this.totalDependencies - left) + "/" + this.totalDependencies + ")" : "All downloads complete.");
+            }
+        };
+
+        window.onerror = function(event) {
+            Module.setStatus("Exception thrown, see JavaScript console");
+            Module.setStatus = function(text) {
+                if (text) Module.printErr("[post-exception status] " + text);
+            };
+        };
+    </script>
+    <script src="doom-wasm/src/websockets-doom.js"></script>
+</body>
+
+</html>

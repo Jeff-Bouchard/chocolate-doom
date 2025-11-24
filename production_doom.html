@@ -537,27 +537,17 @@
         const EXPECTED_JS_SHA256 = "2d0ce813055e7e128cfac37ae331f79c2393a6bc578dd96bc2c6bc3ea777317b";
         const EXPECTED_WASM_SHA256 = "de358cfaafc8067a0a00d64e8c983fe15a99f689fb7bd8c394c22e3c81a99521";
 
+        const LOCAL_ASSET_DIR = './chocolate-doom/build-emscripten/src/';
+        const LOCAL_WAD_PATH = `${LOCAL_ASSET_DIR}doom1.wad`;
+        const LOCAL_JS_PATH = `${LOCAL_ASSET_DIR}chocolate-doom.js`;
+        const LOCAL_WASM_PATH = `${LOCAL_ASSET_DIR}chocolate-doom.wasm`;
+
+        // Loopback-hosted IPFS gateway (doom.private.ness -> 127.0.0.1) for CORS-safe access
+        const LOCAL_GATEWAY_ORIGIN = 'https://doom.private.ness';
+
         // DNS resolver configuration - using ONLY ns74.com (no central authorities)
         const NS74_SERVER = 'ns74.com';
         const NS74_DNS_API = `https://${NS74_SERVER}/api/dns`; // Simple HTTP API for DNS queries
-
-        const IPFS_GATEWAYS = [
-            'https://ipfs.ness.cx/ipfs/', // Primary: Your decentralized gateway
-            // 'http://127.0.0.1:8080/ipfs/', // Local IPFS node (if running)
-            // CORS-enabled gateways only
-            'https://cloudflare-ipfs.com/ipfs/', // Cloudflare gateway (CORS enabled)
-            'https://dweb.link/ipfs/', // Protocol Labs gateway (CORS enabled)
-            'https://4everland.io/ipfs/', // 4everland gateway (CORS enabled)
-            'https://nftstorage.link/ipfs/' // NFT.storage gateway (CORS enabled)
-        ];
-
-        // CORS proxy fallback gateways
-        const CORS_PROXY_GATEWAYS = [
-            'https://cors-anywhere.herokuapp.com/https://ipfs.io/ipfs/',
-            'https://api.allorigins.win/raw?url=https://ipfs.io/ipfs/',
-            'https://api.codetabs.com/v1/proxy?quest=https://ipfs.io/ipfs/',
-            'https://corsproxy.io/?https://gateway.ipfs.io/ipfs/'
-        ];
 
         // Logging function
         function log(message, isError = false) {
@@ -721,63 +711,72 @@
         }
 
         // IPFS fetching using ONLY ipfs.ness.cx via CORS proxy - NO CORS BULLSHIT
-        async function fetchFromIPFS(hash, isText = false, maxRetries = 3) {
-            log(`📦 Downloading: ${hash}`);
+        async function fetchFromIPFS(hash, isText = false) {
+            const url = `${LOCAL_GATEWAY_ORIGIN}/ipfs/${hash}`;
+            log(`📦 Downloading: ${hash} via ${LOCAL_GATEWAY_ORIGIN} (loopback gateway)`);
 
-            // Use multiple fast CORS proxies for ipfs.ness.cx - ELIMINATES ALL CORS ISSUES
-            const proxies = [
-                `https://corsproxy.io/?${encodeURIComponent(`https://ipfs.ness.cx/ipfs/${hash}`)}`,
-                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(`https://ipfs.ness.cx/ipfs/${hash}`)}`,
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://ipfs.ness.cx/ipfs/${hash}`)}`
-            ];
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-            // Try each proxy in order until one works
-            for (const proxyUrl of proxies) {
-                for (let attempt = 0; attempt <= 1; attempt++) {
-                    try {
-                        if (attempt > 0) {
-                            log(`🔄 Retry attempt ${attempt}/1 for ${hash} via ${proxyUrl.split('?')[0]}`);
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                        }
-
-                        log(`🔄 Fetching from ipfs.ness.cx via ${proxyUrl.includes('corsproxy') ? 'corsproxy.io' : proxyUrl.includes('codetabs') ? 'codetabs' : 'allorigins'} (NO CORS)...`);
-
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 30000); // Faster timeout
-
-                        const response = await fetch(proxyUrl, {
-                            method: 'GET',
-                            signal: controller.signal
-                        });
-
-                        clearTimeout(timeoutId);
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-
-                        const data = isText ? await response.text() : await response.arrayBuffer();
-
-                        if (!data || (isText ? data.length === 0 : data.byteLength === 0)) {
-                            throw new Error('Empty data received');
-                        }
-
-                        log(`✅ Downloaded ${hash}: ${data.length || data.byteLength} bytes from ipfs.ness.cx (NO CORS)`);
-                        return data;
-
-                    } catch (err) {
-                        if (err.name === 'AbortError') {
-                            log(`⚠ Request timeout for ${hash} via proxy`);
-                        } else {
-                            log(`⚠ Proxy failed: ${err.message}`);
-                        }
-
-                        if (attempt === 1) break; // Try next proxy
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors',
+                    credentials: 'omit',
+                    cache: 'no-store',
+                    signal: controller.signal,
+                    headers: {
+                        'Origin': window.location.origin
                     }
-                }
-            }
+                });
 
-            throw new Error(`Download failed for ${hash} from ipfs.ness.cx - all proxies exhausted`);
+                const data = isText ? await response.text() : await response.arrayBuffer();
+                const size = isText ? data.length : data.byteLength;
+
+                if (!size) {
+                    throw new Error('Empty data received');
+                }
+
+                if (!response.ok) {
+                    log(`⚠ ipfs.ness.cx returned HTTP ${response.status} but delivered ${size} bytes. Continuing with payload.`, true);
+                } else {
+                    log(`✅ Downloaded ${hash} from ipfs.ness.cx (${size} bytes)`);
+                }
+
+                return data;
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        async function fetchLocalAsset(path, isText = false) {
+            log(`📁 Attempting local load: ${path}`);
+            const response = await fetch(path, {
+                cache: 'no-store'
+            });
+            if (!response.ok) {
+                throw new Error(`Local fetch ${path} failed: HTTP ${response.status} ${response.statusText}`);
+            }
+            const data = isText ? await response.text() : await response.arrayBuffer();
+            const size = isText ? data.length : data.byteLength;
+            if (!size) {
+                throw new Error(`Local asset ${path} is empty`);
+            }
+            log(`✅ Local asset loaded (${size} bytes/text units)`);
+            return data;
+        }
+
+        async function fetchAssetWithLocalFallback(remoteId, isText, label, localPath) {
+            try {
+                return await fetchFromIPFS(remoteId, isText);
+            } catch (err) {
+                log(`⚠ ${label} download via ipfs.ness.cx failed: ${err.message}`, true);
+                if (!localPath) {
+                    throw err;
+                }
+                log(`📂 Falling back to local ${label} at ${localPath}`);
+                return await fetchLocalAsset(localPath, isText);
+            }
         }
 
         // Verify all EmerDNS domains
@@ -1045,8 +1044,8 @@
 
                     log('📦 Downloading assets...');
                     [wadData, jsCode] = await Promise.all([
-                        fetchFromIPFS(wadHash, false),
-                        fetchFromIPFS(jsHash, true)
+                        fetchAssetWithLocalFallback(wadHash, false, 'WAD', LOCAL_WAD_PATH),
+                        fetchAssetWithLocalFallback(jsHash, true, 'JS', LOCAL_JS_PATH)
                     ]);
                     await verifyIntegrity(wadData, EXPECTED_WAD_SHA256, 'WAD');
                     await verifyIntegrity(new TextEncoder().encode(jsCode), EXPECTED_JS_SHA256, 'JS');
@@ -1126,7 +1125,7 @@
                         (async () => {
                             try {
                                 log(`🔩 Fetching WASM via IPFS execution layer (proxied)`);
-                                const wasmBuf = await fetchFromIPFS(wasmHash, false);
+                                const wasmBuf = await fetchAssetWithLocalFallback(wasmHash, false, 'WASM', LOCAL_WASM_PATH);
                                 await verifyIntegrity(wasmBuf, EXPECTED_WASM_SHA256, 'WASM');
                                 if (!(wasmBuf instanceof ArrayBuffer)) {
                                     throw new Error('WASM fetch did not return ArrayBuffer');

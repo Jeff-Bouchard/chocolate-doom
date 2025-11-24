@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "doom-wasm",
+			"path": "doom-wasm"
+		}
+	],
+	"settings": {}
+}
