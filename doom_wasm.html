@@ -41,65 +41,254 @@
 <body>
     <div id="container">
         <canvas id="game" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+        <div id="config" style="margin-top: 1rem; font-size: 0.9rem; max-width: 800px; margin-left: auto; margin-right: auto; text-align: left;">
+            <div>NESS-DOOM-WASM-LOADER v1 (gateway: https://doom.private.ness)</div>
+            <label>Engine JS path:
+                <input id="engine-path" type="text" style="width: 100%;" value="https://doom.private.ness/doom-wasm/src/websockets-doom.js">
+            </label>
+            <label>WAD path:
+                <input id="wad-path" type="text" style="width: 100%;" value="https://doom.private.ness/doom-wasm/src/doom1.wad">
+            </label>
+            <label>Config path:
+                <input id="cfg-path" type="text" style="width: 100%;" value="https://doom.private.ness/doom-wasm/src/default.cfg">
+            </label>
+            <label>Expected Engine SHA-256 (optional):
+                <input id="engine-sha" type="text" style="width: 100%;" placeholder="leave blank to just print actual" />
+            </label>
+            <label>Expected WAD SHA-256 (optional):
+                <input id="wad-sha" type="text" style="width: 100%;" placeholder="leave blank to just print actual" />
+            </label>
+            <button id="start-doom" type="button">Start DOOM</button>
+            <pre id="status" style="margin-top: 0.5rem; max-height: 150px; overflow-y: auto; background:#000; padding:0.5rem; border:1px solid #333;"></pre>
+        </div>
     </div>
     <script>
-        const doomArgs = [
-            "-iwad", "doom1.wad",
-            "-window",
-            "-nogui",
-            "-nomusic",
-            "-config", "default.cfg",
-            "-servername", "doom-wasm-local"
-        ];
+        (function() {
+            const LOCAL_GATEWAY_ORIGIN = "https://doom.private.ness"; // loopback-mapped HTTPS origin
+            const IS_FILE_ORIGIN = window.location.protocol === "file:";
 
-        var Module = {
-            onRuntimeInitialized: function() {
-                if (typeof callMain === "function") {
-                    callMain(doomArgs);
-                }
-            },
-            noInitialRun: true,
-            preRun: function() {
-                try {
-                    Module.FS.createPreloadedFile("", "doom1.wad", "doom-wasm/src/doom1.wad", true, true);
-                    Module.FS.createPreloadedFile("", "default.cfg", "doom-wasm/src/default.cfg", true, true);
-                } catch (e) {
-                    console.error("Failed to preload DOOM assets:", e);
-                }
-            },
-            print: function(text) {
-                if (text) console.log(text);
-            },
-            printErr: function(text) {
-                if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(" ");
-                console.error(text);
-            },
-            canvas: (function() {
-                var canvas = document.getElementById("game");
-                canvas.addEventListener("webglcontextlost", function(e) {
-                    alert("WebGL context lost. Reload the page.");
-                    e.preventDefault();
-                }, false);
-                return canvas;
-            })(),
-            setStatus: function(text) {
-                if (text) console.log(text);
-            },
-            totalDependencies: 0,
-            monitorRunDependencies: function(left) {
-                this.totalDependencies = Math.max(this.totalDependencies, left);
-                Module.setStatus(left ? "Preparing... (" + (this.totalDependencies - left) + "/" + this.totalDependencies + ")" : "All downloads complete.");
+            const engineInput = document.getElementById("engine-path");
+            const wadInput = document.getElementById("wad-path");
+            const cfgInput = document.getElementById("cfg-path");
+            const engineShaInput = document.getElementById("engine-sha");
+            const wadShaInput = document.getElementById("wad-sha");
+            const statusEl = document.getElementById("status");
+
+            // Default paths depend on origin: use gateway over HTTPS, relative paths for file://
+            const DEFAULT_ENGINE = IS_FILE_ORIGIN ?
+                "doom-wasm/src/websockets-doom.js" :
+                `${LOCAL_GATEWAY_ORIGIN}/doom-wasm/src/websockets-doom.js`;
+            const DEFAULT_WAD = IS_FILE_ORIGIN ?
+                "doom-wasm/src/doom1.wad" :
+                `${LOCAL_GATEWAY_ORIGIN}/doom-wasm/src/doom1.wad`;
+            const DEFAULT_CFG = IS_FILE_ORIGIN ?
+                "doom-wasm/src/default.cfg" :
+                `${LOCAL_GATEWAY_ORIGIN}/doom-wasm/src/default.cfg`;
+
+            // If we are on file://, rewrite visible defaults so the user sees local paths, not https URLs
+            if (IS_FILE_ORIGIN) {
+                if (engineInput) engineInput.value = DEFAULT_ENGINE;
+                if (wadInput) wadInput.value = DEFAULT_WAD;
+                if (cfgInput) cfgInput.value = DEFAULT_CFG;
             }
-        };
 
-        window.onerror = function(event) {
-            Module.setStatus("Exception thrown, see JavaScript console");
-            Module.setStatus = function(text) {
-                if (text) Module.printErr("[post-exception status] " + text);
-            };
-        };
+            function log(msg) {
+                if (!statusEl) {
+                    console.log(msg);
+                    return;
+                }
+                const t = new Date().toLocaleTimeString();
+                statusEl.textContent += `[${t}] ${msg}\n`;
+                statusEl.scrollTop = statusEl.scrollHeight;
+            }
+
+            async function checkPath(path, label) {
+                // Many browsers restrict fetch/HEAD from file://; don't hard-fail there.
+                if (IS_FILE_ORIGIN) {
+                    log(`${label}: skipping HEAD for ${path} under file:// (cannot reliably probe, assuming present).`);
+                    return true;
+                }
+                try {
+                    const res = await fetch(path, {
+                        method: "HEAD",
+                        cache: "no-store"
+                    });
+                    if (!res.ok) {
+                        log(`${label}: HTTP ${res.status} for ${path}`);
+                        return false;
+                    }
+                    return true;
+                } catch (e) {
+                    log(`${label}: fetch failed for ${path} (${e.message})`);
+                    return false;
+                }
+            }
+
+            async function computeSHA256(buffer) {
+                const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+            }
+
+            let wadPath = DEFAULT_WAD;
+            let cfgPath = DEFAULT_CFG;
+
+            async function startDoom() {
+                const enginePath = (engineInput.value || DEFAULT_ENGINE).trim();
+                wadPath = (wadInput.value || DEFAULT_WAD).trim();
+                cfgPath = (cfgInput.value || DEFAULT_CFG).trim();
+
+                log(`Using engine=${enginePath}, wad=${wadPath}, cfg=${cfgPath}`);
+
+                const [okEngine, okWad, okCfg] = await Promise.all([
+                    checkPath(enginePath, "Engine"),
+                    checkPath(wadPath, "WAD"),
+                    checkPath(cfgPath, "CFG")
+                ]);
+
+                if (!okEngine || !okWad || !okCfg) {
+                    log("Cannot start DOOM until all paths resolve (fix the red lines above).");
+                    return;
+                }
+
+                const expectedEngineSha = (engineShaInput && engineShaInput.value || "").trim().toLowerCase();
+                const expectedWadSha = (wadShaInput && wadShaInput.value || "").trim().toLowerCase();
+
+                if (expectedEngineSha || expectedWadSha) {
+                    log("Computing SHA-256 for provided assets...");
+                }
+
+                if (expectedEngineSha) {
+                    if (IS_FILE_ORIGIN) {
+                        log("Engine hash check requested, but running under file:// — browser may block local reads; open via https://doom.private.ness for full integrity check.");
+                        return;
+                    }
+                    try {
+                        const engineRes = await fetch(enginePath, {
+                            cache: "no-store"
+                        });
+                        const engineText = await engineRes.text();
+                        const enc = new TextEncoder();
+                        const engineHash = await computeSHA256(enc.encode(engineText).buffer);
+                        const match = engineHash === expectedEngineSha;
+                        log(`Engine SHA-256: ${engineHash}${match ? " (OK)" : " (MISMATCH vs expected)"}`);
+                        if (!match) {
+                            log("Aborting start due to engine hash mismatch.");
+                            return;
+                        }
+                    } catch (e) {
+                        log(`Failed to hash engine JS: ${e.message}`);
+                        return;
+                    }
+                }
+
+                if (expectedWadSha) {
+                    if (IS_FILE_ORIGIN) {
+                        log("WAD hash check requested, but running under file:// — browser may block local reads; open via https://doom.private.ness for full integrity check.");
+                        return;
+                    }
+                    try {
+                        const wadRes = await fetch(wadPath, {
+                            cache: "no-store"
+                        });
+                        const wadBuf = await wadRes.arrayBuffer();
+                        const wadHash = await computeSHA256(wadBuf);
+                        const match = wadHash === expectedWadSha;
+                        log(`WAD SHA-256: ${wadHash}${match ? " (OK)" : " (MISMATCH vs expected)"}`);
+                        if (!match) {
+                            log("Aborting start due to WAD hash mismatch.");
+                            return;
+                        }
+                    } catch (e) {
+                        log(`Failed to hash WAD: ${e.message}`);
+                        return;
+                    }
+                }
+
+                const doomArgs = [
+                    "-iwad", "doom1.wad",
+                    "-window",
+                    "-nogui",
+                    "-nomusic",
+                    "-config", "default.cfg",
+                    "-servername", "doom-wasm-local"
+                ];
+
+                window.Module = {
+                    NESS_LOADER_TAG: "NESS-DOOM-WASM-LOADER-v1",
+                    onRuntimeInitialized: function() {
+                        if (typeof callMain === "function") {
+                            log("Runtime initialized, calling main()...");
+                            callMain(doomArgs);
+                        } else {
+                            log("callMain is not available on Module.");
+                        }
+                    },
+                    noInitialRun: true,
+                    preRun: function() {
+                        try {
+                            Module.FS.createPreloadedFile("", "doom1.wad", wadPath, true, true);
+                            Module.FS.createPreloadedFile("", "default.cfg", cfgPath, true, true);
+                            log("Preloaded WAD and CFG into virtual FS.");
+                        } catch (e) {
+                            log(`Failed to preload assets: ${e.message}`);
+                        }
+                    },
+                    print: function(text) {
+                        if (text) log(`DOOM: ${text}`);
+                    },
+                    printErr: function(text) {
+                        if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(" ");
+                        log(`ERR: ${text}`);
+                    },
+                    canvas: (function() {
+                        var canvas = document.getElementById("game");
+                        canvas.addEventListener("webglcontextlost", function(e) {
+                            alert("WebGL context lost. Reload the page.");
+                            e.preventDefault();
+                        }, false);
+                        return canvas;
+                    })(),
+                    setStatus: function(text) {
+                        if (text) log(text);
+                    },
+                    totalDependencies: 0,
+                    monitorRunDependencies: function(left) {
+                        this.totalDependencies = Math.max(this.totalDependencies, left);
+                        Module.setStatus(left ? `Preparing... (${this.totalDependencies - left}/${this.totalDependencies})` : "All downloads complete.");
+                    }
+                };
+
+                window.onerror = function(event) {
+                    Module.setStatus("Exception thrown, see JavaScript console");
+                    Module.setStatus = function(text) {
+                        if (text) Module.printErr(`[post-exception status] ${text}`);
+                    };
+                };
+
+                const script = document.createElement("script");
+                script.src = enginePath;
+                script.onload = function() {
+                    log("Engine JS loaded.");
+                };
+                script.onerror = function() {
+                    log(`Failed to load engine JS from ${enginePath}`);
+                };
+                document.body.appendChild(script);
+            }
+
+            const startBtn = document.getElementById("start-doom");
+            if (startBtn) {
+                startBtn.addEventListener("click", function() {
+                    startDoom().catch(function(e) {
+                        log(`Fatal error starting DOOM: ${e.message}`);
+                    });
+                });
+            }
+
+            log("NESS-DOOM-WASM-LOADER v1 ready.");
+        })();
     </script>
-    <script src="doom-wasm/src/websockets-doom.js"></script>
 </body>
 
 </html>
